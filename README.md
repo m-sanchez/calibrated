@@ -7,13 +7,13 @@
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
 
 Is your model's confidence honest? ECE, Brier decomposition, reliability
-diagrams, and temperature scaling — zero dependencies.
+diagrams, and temperature scaling - zero dependencies.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
 
 A model is *calibrated* when the confidence it reports matches how often it
 is right: among the predictions it makes at 90% confidence, 90% should be
-correct. Modern classifiers usually are not — they are overconfident — and
+correct. Modern classifiers usually are not - they are overconfident - and
 an overconfident model that also refuses or escalates on low confidence is
 making those decisions on numbers that do not mean what they say. This
 measures the gap and closes it, from labelled `(confidence, correct)`
@@ -29,13 +29,13 @@ const bins = reliabilityDiagram(predictions, 15);         // confidence vs accur
 
 - **ECE** (expected calibration error): the average confidence-vs-accuracy
   gap, weighted by bin population. The headline number.
-- **MCE**: the single worst bin — the confidence level you can trust least.
+- **MCE**: the single worst bin - the confidence level you can trust least.
 - **Brier score** with Murphy's decomposition into **reliability**
   (calibration), **resolution** (how much predictions separate outcomes),
   and **uncertainty** (the task's irreducible floor), so a bad score reads
   as *miscalibrated* versus *uninformative*.
 - **Reliability diagram** data: per-bin mean confidence vs observed
-  accuracy, with equal-width or equal-mass (adaptive) binning — the latter
+  accuracy, with equal-width or equal-mass (adaptive) binning - the latter
   keeps every bin's estimate on comparable footing when confidence piles
   up near 1.0, which it always does.
 
