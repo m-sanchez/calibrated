@@ -1,0 +1,23 @@
+{
+  "name": "calibrated",
+  "version": "1.0.0",
+  "description": "Is your model's confidence honest? ECE, Brier decomposition, reliability diagrams, and temperature scaling - zero dependencies.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "src"],
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "demo": "node demo/demo.ts"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/m-sanchez/calibrated.git" },
+  "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
+  "license": "MIT",
+  "keywords": ["calibration", "ece", "temperature-scaling", "brier-score", "reliability-diagram", "machine-learning", "model-evaluation", "uncertainty"],
+  "engines": { "node": ">=22.18" },
+  "devDependencies": { "@types/node": "^26.4.0", "typescript": "^5.7.0" }
+}
