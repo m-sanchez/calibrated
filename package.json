@@ -1,6 +1,6 @@
 {
   "name": "@m-sanchez/calibrated",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "publishConfig": {
     "access": "public"
   },
@@ -16,7 +16,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "CLAIMS.md"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",

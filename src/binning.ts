@@ -73,8 +73,8 @@ export function bin(
     });
   }
 
-  // equal-mass: sort by confidence, then cut at quantile boundaries that are
-  // walked forward to the end of any run of tied confidences. A repeated
+  // equal-mass: sort by confidence, then place the quantile cuts and snap
+  // each one to the nearest index where the confidence changes. A repeated
   // confidence value is never split across two bins, so the result is a
   // function of the multiset of predictions and not of the order they
   // arrived in - which matters because rounded confidences (0.91, 0.92, ...)

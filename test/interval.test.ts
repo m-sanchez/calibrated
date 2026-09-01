@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { eceInterval, nullEce } from '../src/interval.ts';
+import { calibrationError } from '../src/metrics.ts';
 import type { Prediction } from '../src/binning.ts';
 
 /** A band of `count` predictions all at `confidence`, of which exactly
@@ -82,4 +83,32 @@ test('the published noise-floor table is what nullEce reports', () => {
       assert.equal(r.p95.toFixed(4), p95, `n=${n}, ${bins} bins: p95`);
     }
   }
+});
+
+test('a 0.1 ship bar rejects a perfectly calibrated 100-item eval set a third of the time', () => {
+  // The README quotes these rejection rates. Same LCG as src/interval.ts,
+  // so the simulation is the one a reader can reproduce.
+  const lcg = (seed: number) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 0x100000000;
+    };
+  };
+  const rejectionRate = (n: number, bins: number) => {
+    const rand = lcg(42);
+    const iterations = 2000;
+    let over = 0;
+    for (let it = 0; it < iterations; it++) {
+      const sample: Prediction[] = Array.from({ length: n }, () => {
+        const confidence = 0.5 + rand() * 0.5;
+        return { confidence, correct: rand() < confidence };
+      });
+      if (calibrationError(sample, bins, 'equal-width').ece > 0.1) over++;
+    }
+    return over / iterations;
+  };
+  assert.equal(rejectionRate(100, 15).toFixed(2), '0.31');
+  assert.equal(rejectionRate(200, 15).toFixed(2), '0.03');
+  assert.equal(rejectionRate(400, 15), 0);
 });
