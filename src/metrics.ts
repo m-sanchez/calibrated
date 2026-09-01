@@ -18,7 +18,13 @@ export interface CalibrationError {
   ece: number;
   /** maximum calibration error: max_b |acc_b - conf_b| over non-empty bins */
   mce: number;
+  /** the bin count that was asked for */
   bins: number;
+  /** the number of bins that actually carried predictions, which is what
+   * the numbers above were computed over. Below `bins` when equal-width
+   * leaves gaps, or when equal-mass finds fewer distinct confidences than
+   * bins (it never splits a tied value across a boundary). */
+  effectiveBins: number;
   strategy: BinStrategy;
   n: number;
 }
@@ -45,7 +51,7 @@ export function calibrationError(
   const groups = bin(predictions, bins, strategy).filter((b) => b.count > 0);
   const ece = groups.reduce((s, b) => s + (b.count / n) * b.gap, 0);
   const mce = groups.reduce((m, b) => Math.max(m, b.gap), 0);
-  return { ece: n === 0 ? 0 : ece, mce, bins, strategy, n };
+  return { ece: n === 0 ? 0 : ece, mce, bins, effectiveBins: groups.length, strategy, n };
 }
 
 export interface BrierDecomposition {

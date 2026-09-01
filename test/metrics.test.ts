@@ -91,3 +91,20 @@ test('binning rejects invalid inputs at the boundary', () => {
   assert.throws(() => bin([{ confidence: 1.5, correct: true }]), RangeError);
   assert.throws(() => bin([], 0), RangeError);
 });
+
+test('the report says how many bins actually carried data', () => {
+  // 11 distinct confidences into 10 equal-mass bins: nine bins of one and
+  // one of two. The requested count is echoed; the effective count is real.
+  const preds: Prediction[] = Array.from({ length: 11 }, (_, i) => ({
+    confidence: (i + 0.5) / 11,
+    correct: i % 2 === 0
+  }));
+  const r = calibrationError(preds, 10, 'equal-mass');
+  assert.equal(r.bins, 10, 'the requested bin count is echoed back');
+  assert.equal(r.effectiveBins, bin(preds, 10, 'equal-mass').length);
+  assert.equal(r.effectiveBins, 10);
+  // equal-width leaves gaps: only the populated bins count
+  const w = calibrationError(band(0.9, 0.6, 200), 10, 'equal-width');
+  assert.equal(w.bins, 10);
+  assert.equal(w.effectiveBins, 1);
+});
