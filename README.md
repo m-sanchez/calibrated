@@ -9,7 +9,8 @@
 Is your model's confidence honest? ECE, Brier decomposition, reliability
 diagrams, and temperature scaling - zero dependencies.
 
-[More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
+[More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics) ·
+[Worked example: routing-study](https://github.com/m-sanchez/routing-study)
 
 A model is *calibrated* when the confidence it reports matches how often it
 is right: among the predictions it makes at 90% confidence, 90% should be
