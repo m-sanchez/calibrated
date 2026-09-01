@@ -5,6 +5,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-B45309)
 [![CI](https://github.com/m-sanchez/calibrated/actions/workflows/test.yml/badge.svg)](https://github.com/m-sanchez/calibrated/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
+[![npm](https://img.shields.io/npm/v/@m-sanchez/calibrated?color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@m-sanchez/calibrated)
 
 > **In plain English:** when a model says it is "90% sure", is it actually right 90% of the time? `calibrated` measures whether those confidence numbers can be trusted, and corrects them when they cannot.
 
@@ -13,6 +14,10 @@ diagrams, and temperature scaling - zero dependencies.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics) ·
 [Worked example: routing-study](https://github.com/m-sanchez/routing-study)
+
+*Provenance: a fresh, dependency-free implementation of standard methods,
+written to test the systems the other tools came from. First published
+2026-08-31.*
 
 A model is *calibrated* when the confidence it reports matches how often it
 is right: among the predictions it makes at 90% confidence, 90% should be
@@ -23,7 +28,7 @@ measures the gap and closes it, from labelled `(confidence, correct)`
 pairs, with a careful dependency-free implementation of standard measures.
 
 ```ts
-import { calibrationError, brier, reliabilityDiagram } from 'calibrated';
+import { calibrationError, brier, reliabilityDiagram } from '@m-sanchez/calibrated';
 
 const { ece, mce } = calibrationError(predictions, 15);   // expected & worst-bin gap
 const { score, reliability, resolution, uncertainty } = brier(predictions);
@@ -51,7 +56,7 @@ accuracy is unchanged. `T` is fit by minimising NLL on a held-out set,
 here by a dependency-free golden-section search.
 
 ```ts
-import { fitTemperature, toPredictions } from 'calibrated';
+import { fitTemperature, toPredictions } from '@m-sanchez/calibrated';
 
 const fit = fitTemperature(logitSamples);   // { temperature, nllBefore, nllAfter }
 const recalibrated = toPredictions(logitSamples, fit.temperature);
@@ -86,9 +91,9 @@ npm run demo
 npm run typecheck
 ```
 
-Install: `npm install github:m-sanchez/calibrated#v1.0.0` (not yet on npm;
-CI proves the packed tarball imports). Node 22.18+, zero runtime
-dependencies.
+Install: `npm install @m-sanchez/calibrated` (or a pinned git tag,
+`github:m-sanchez/calibrated#v1.0.1`; CI proves the packed tarball imports).
+Node 22.18+, zero runtime dependencies.
 
 ## The tests are the point
 
