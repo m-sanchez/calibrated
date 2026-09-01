@@ -108,3 +108,15 @@ test('the report says how many bins actually carried data', () => {
   assert.equal(w.bins, 10);
   assert.equal(w.effectiveBins, 1);
 });
+
+test('an empty set reports no evidence, not perfect calibration', () => {
+  const r = calibrationError([], 10);
+  assert.ok(Number.isNaN(r.ece), `ece on no data should be NaN, got ${r.ece}`);
+  assert.ok(Number.isNaN(r.mce), `mce on no data should be NaN, got ${r.mce}`);
+  assert.equal(r.n, 0);
+  assert.equal(r.effectiveBins, 0);
+  assert.equal(r.ece <= 0.1, false, 'an empty slice must not pass a calibration bar');
+  const b = brier([]);
+  assert.ok(Number.isNaN(b.score), `brier on no data should be NaN, got ${b.score}`);
+  assert.ok(Number.isNaN(b.reliability) && Number.isNaN(b.resolution) && Number.isNaN(b.uncertainty));
+});

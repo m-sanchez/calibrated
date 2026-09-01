@@ -14,7 +14,9 @@ import { bin } from './binning.ts';
 import type { BinStrategy, Prediction } from './binning.ts';
 
 export interface CalibrationError {
-  /** expected calibration error: sum_b (n_b / N) * |acc_b - conf_b| */
+  /** expected calibration error: sum_b (n_b / N) * |acc_b - conf_b|.
+   * NaN when there are no predictions: no data is no evidence, not a
+   * confident zero, and it must not slip past a `ece <= x` bar. */
   ece: number;
   /** maximum calibration error: max_b |acc_b - conf_b| over non-empty bins */
   mce: number;
@@ -49,9 +51,10 @@ export function calibrationError(
 ): CalibrationError {
   const n = predictions.length;
   const groups = bin(predictions, bins, strategy).filter((b) => b.count > 0);
+  if (n === 0) return { ece: NaN, mce: NaN, bins, effectiveBins: 0, strategy, n };
   const ece = groups.reduce((s, b) => s + (b.count / n) * b.gap, 0);
   const mce = groups.reduce((m, b) => Math.max(m, b.gap), 0);
-  return { ece: n === 0 ? 0 : ece, mce, bins, effectiveBins: groups.length, strategy, n };
+  return { ece, mce, bins, effectiveBins: groups.length, strategy, n };
 }
 
 export interface BrierDecomposition {
@@ -76,7 +79,8 @@ export function brier(
   strategy: BinStrategy = 'equal-width'
 ): BrierDecomposition {
   const n = predictions.length;
-  if (n === 0) return { score: 0, reliability: 0, resolution: 0, uncertainty: 0 };
+  // no predictions is no evidence, not a perfect score
+  if (n === 0) return { score: NaN, reliability: NaN, resolution: NaN, uncertainty: NaN };
   const outcome = (p: Prediction) => (p.correct ? 1 : 0);
   const score = predictions.reduce((s, p) => s + (p.confidence - outcome(p)) ** 2, 0) / n;
 
