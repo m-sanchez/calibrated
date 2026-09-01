@@ -96,3 +96,31 @@ test('nll is finite even when a label has vanishing probability', () => {
   const samples: LogitSample[] = [{ logits: [50, -50], label: 1 }];
   assert.ok(Number.isFinite(nll(samples, 1)));
 });
+
+test('softmax survives a real vocabulary, not just huge magnitudes', () => {
+  // 200k classes is a modern LLM vocabulary. All the mass sits on the first
+  // three logits, so the top probabilities must match the 3-class reference.
+  const k = 200_000;
+  const logits = new Array<number>(k).fill(-1000);
+  logits[0] = 3;
+  logits[1] = 1;
+  logits[2] = 2;
+  const p = softmax(logits);
+  const sum = p.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(sum - 1) < 1e-9, `sums to ${sum}`);
+  const reference = softmax([3, 1, 2]);
+  for (let i = 0; i < 3; i++) {
+    assert.ok(Math.abs(p[i] - reference[i]) < 1e-12, `class ${i}: ${p[i]} vs ${reference[i]}`);
+  }
+  // and a spread vocabulary still normalises
+  const rand = seeded(21);
+  const spread = Array.from({ length: k }, () => rand() * 40);
+  const q = softmax(spread);
+  assert.ok(Math.abs(q.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  assert.ok(q.every((x) => x >= 0 && x <= 1));
+});
+
+test('softmax refuses a non-finite logit instead of returning NaN', () => {
+  assert.throws(() => softmax([1, Number.NaN]), RangeError);
+  assert.throws(() => softmax([1, Number.POSITIVE_INFINITY]), RangeError);
+});

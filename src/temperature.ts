@@ -16,14 +16,29 @@ export interface LogitSample {
   label: number;
 }
 
-/** Numerically stable softmax of logits divided by temperature. */
+/** Numerically stable softmax of logits divided by temperature. The maximum
+ * is taken in a loop rather than with `Math.max(...logits)`: the spread form
+ * puts every logit on the call stack and throws above roughly 100k of them,
+ * and a modern LLM vocabulary is 128k-256k classes. */
 export function softmax(logits: number[], temperature = 1): number[] {
   if (!(temperature > 0)) throw new RangeError(`temperature must be > 0, got ${temperature}`);
-  const scaled = logits.map((z) => z / temperature);
-  const max = Math.max(...scaled);
-  const exps = scaled.map((z) => Math.exp(z - max));
-  const sum = exps.reduce((a, b) => a + b, 0);
-  return exps.map((e) => e / sum);
+  const k = logits.length;
+  let max = -Infinity;
+  for (let i = 0; i < k; i++) {
+    const z = logits[i];
+    if (!Number.isFinite(z)) throw new RangeError(`logit at index ${i} must be finite, got ${z}`);
+    const scaled = z / temperature;
+    if (scaled > max) max = scaled;
+  }
+  const out = new Array<number>(k);
+  let sum = 0;
+  for (let i = 0; i < k; i++) {
+    const e = Math.exp(logits[i] / temperature - max);
+    out[i] = e;
+    sum += e;
+  }
+  for (let i = 0; i < k; i++) out[i] /= sum;
+  return out;
 }
 
 /** Mean negative log-likelihood of the labels under temperature T. */
