@@ -6,6 +6,8 @@
 [![CI](https://github.com/m-sanchez/calibrated/actions/workflows/test.yml/badge.svg)](https://github.com/m-sanchez/calibrated/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
 
+> **In plain English:** when a model says it is "90% sure", is it actually right 90% of the time? `calibrated` measures whether those confidence numbers can be trusted, and corrects them when they cannot.
+
 Is your model's confidence honest? ECE, Brier decomposition, reliability
 diagrams, and temperature scaling - zero dependencies.
 
