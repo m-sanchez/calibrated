@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
-    "demo": "node demo/demo.ts"
+    "demo": "node demo/demo.ts",
+    "floor": "node demo/floor.ts"
   },
   "repository": {
     "type": "git",

@@ -8,7 +8,12 @@
  * predictions vary with outcome), and the irreducible uncertainty of the
  * task - so a bad Brier score can be read as "miscalibrated" versus
  * "uninformative". These are standard, published measures; the point of
- * this package is a careful, dependency-free, well-tested implementation. */
+ * this package is a careful, dependency-free, well-tested implementation.
+ *
+ * ECE is a positively biased estimate: a perfectly calibrated model still
+ * reports a non-zero ECE from binning noise alone, and the bias grows with
+ * the bin count and shrinks with the sample size. `eceInterval` and
+ * `nullEce` in ./interval.ts say how much of a reading is noise. */
 
 import { bin } from './binning.ts';
 import type { BinStrategy, Prediction } from './binning.ts';
