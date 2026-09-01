@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { brier, calibrationError } from '../src/metrics.ts';
 import type { Prediction } from '../src/binning.ts';
 
@@ -16,7 +17,8 @@ test('the package has no runtime dependencies', () => {
 });
 
 test('the demo prints the numbers the README quotes', () => {
-  const out = execFileSync(process.execPath, ['demo/demo.ts'], { encoding: 'utf8' });
+  const demo = fileURLToPath(new URL('../demo/demo.ts', import.meta.url));
+  const out = execFileSync(process.execPath, [demo], { encoding: 'utf8' });
   assert.match(out, /before scaling\s+ECE 0\.284\s+Brier 0\.284\s+accuracy 71\.6%/);
   assert.match(out, /after \(T=4\.45\)\s+ECE 0\.006\s+Brier 0\.204\s+accuracy 71\.6%/);
   const before = Number(/before scaling\s+ECE (\d+\.\d+)/.exec(out)![1]);
