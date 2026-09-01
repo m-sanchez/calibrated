@@ -124,3 +124,37 @@ test('softmax refuses a non-finite logit instead of returning NaN', () => {
   assert.throws(() => softmax([1, Number.NaN]), RangeError);
   assert.throws(() => softmax([1, Number.POSITIVE_INFINITY]), RangeError);
 });
+
+test('fitTemperature says when the optimum is pinned to the bracket', () => {
+  // margin 200: the NLL-minimising temperature is far above the default hi=20
+  const samples = overconfident(2000, 0.7, 200);
+  const fit = fitTemperature(samples);
+  assert.equal(fit.atBound, 'hi', `T=${fit.temperature} should be flagged as pinned`);
+  const wider = fitTemperature(samples, { hi: 2000 });
+  assert.equal(wider.atBound, null, `T=${wider.temperature} sits inside the wider bracket`);
+  assert.ok(
+    wider.nllAfter < fit.nllAfter,
+    `widening reached ${wider.nllAfter}, bracket edge was ${fit.nllAfter}`
+  );
+});
+
+test('a fit that lands inside the bracket reports no bound', () => {
+  const fit = fitTemperature(overconfident(2000, 0.7, 8));
+  assert.equal(fit.atBound, null, `T=${fit.temperature}`);
+});
+
+test('fitTemperature refuses a label outside the logit range', () => {
+  // the classic 1-indexed-label mistake: label 3 on 3 classes
+  assert.throws(
+    () => fitTemperature([{ logits: [1, 2, 3], label: 3 }, { logits: [3, 2, 1], label: 1 }]),
+    (err: unknown) => err instanceof RangeError && /1-indexed/.test((err as Error).message)
+  );
+  assert.throws(() => nll([{ logits: [1, 2], label: -1 }], 1), RangeError);
+  assert.throws(() => toPredictions([{ logits: [1, 2], label: 2 }], 1), RangeError);
+  assert.throws(() => fitTemperature([{ logits: [1, 2], label: 0.5 }]), RangeError);
+});
+
+test('fitTemperature refuses malformed logits', () => {
+  assert.throws(() => fitTemperature([{ logits: [1, Number.NaN], label: 0 }]), RangeError);
+  assert.throws(() => fitTemperature([{ logits: [1], label: 0 }]), RangeError);
+});
