@@ -23,7 +23,7 @@ packaging claims are enforced by `.github/workflows/test.yml` on Node 22,
 
 | Claim | Where | Enforced by |
 | :-- | :-- | :-- |
-| ECE is the confidence-vs-accuracy gap weighted by bin population, and bottoms out at zero for an honest model | README bullets | `test/metrics.test.ts::a perfectly calibrated set has ~zero calibration error` |
+| ECE weights empirical confidence-vs-accuracy gaps by bin population; a constructed set with zero occupied-bin gaps has approximately zero ECE | README bullets; tests table | `test/metrics.test.ts::a perfectly calibrated set has ~zero calibration error` |
 | ECE reads a known miscalibration exactly | README bullets; tests table | `test/metrics.test.ts::an overconfident set surfaces its exact gap` - 200 predictions at 0.9, 60% correct, asserts exactly 0.30 |
 | MCE is the single worst bin, not the average | README bullets; tests table | `test/metrics.test.ts::MCE reports the single worst bin, not the average` |
 | Brier score is the raw mean squared error of the probabilities | README bullets | `test/metrics.test.ts::Brier score is the exact mean squared error of the probabilities` |
@@ -46,27 +46,30 @@ packaging claims are enforced by `.github/workflows/test.yml` on Node 22,
 
 | Claim | Where | Enforced by |
 | :-- | :-- | :-- |
-| ECE is biased upward; the bias grows with bins and shrinks with n | README "Is the number real?"; "Honest limits" | `test/interval.test.ts::the null ECE floor falls with sample size and rises with bin count` |
-| `eceInterval` is a resample-with-replacement bootstrap reporting the middle `level` of the ECEs | README "Is the number real?" | `test/interval.test.ts::the bootstrap interval brackets the point estimate and covers the true gap`; `test/interval.test.ts::a higher confidence level gives a wider interval` |
-| `nullEce` simulates an honest model over *your* confidences and *your* binning | README "Is the number real?" | `test/interval.test.ts::the null floor is computed against the confidences you actually have` |
-| Both reproduce exactly from their seed | README "Is the number real?" | `test/interval.test.ts::the interval reproduces exactly under a fixed seed` |
-| Every cell of the published noise-floor table | README table | `test/interval.test.ts::the published noise-floor table is what nullEce reports` - all 12 cells, median and p95, to 4dp |
-| A bare `ece <= 0.1` bar rejects a perfectly calibrated 100-item set in 31% of draws; 3% at n=200; not once in 2000 at n=400 | README "Is the number real?" | `test/interval.test.ts::a 0.1 ship bar rejects a perfectly calibrated 100-item eval set a third of the time` |
+| The stated calibrated simulation produces positive ECE, with different reference distributions as sample size and bins change | README "How much can ECE vary?"; "Honest limits" | `test/interval.test.ts::the null ECE floor falls with sample size and rises with bin count` |
+| `eceInterval` resamples whole rows with replacement and reports the middle `level` of the resulting ECEs | README "How much can ECE vary?" | `test/interval.test.ts::the bootstrap interval brackets the point estimate and covers the true gap`; `test/interval.test.ts::a higher confidence level gives a wider interval` - these fixtures do not establish general population coverage |
+| Array-input `nullEce` fixes confidences and draws independent Bernoulli correctness under the selected binning | README "How much can ECE vary?" | `test/interval.test.ts::the null floor is computed against the confidences you actually have` |
+| Both summaries reproduce with the same data, settings and seed | README "How much can ECE vary?" | `test/interval.test.ts::the interval reproduces exactly under a fixed seed`; `test/interval.test.ts::the null floor is computed against the confidences you actually have` |
+| Every cell of the published null-simulation table | README table | `test/interval.test.ts::the published noise-floor table is what nullEce reports` - all 12 cells, median and p95, to 4dp |
+| Under the stated uniform-confidence generator and seed, ECE exceeds 0.1 in about 31% of draws at n=100, about 3% at n=200 and zero of 2000 draws at n=400 | README "How much can ECE vary?" | `test/interval.test.ts::a 0.1 ship bar rejects a perfectly calibrated 100-item eval set a third of the time` - simulation frequencies, not population guarantees |
 
 ## Temperature scaling
 
 | Claim | Where | Enforced by |
 | :-- | :-- | :-- |
 | `T > 1` softens an overconfident model and lowers NLL | README "Fix it" | `test/temperature.test.ts::fitting temperature on an overconfident model returns T > 1 and lowers NLL` |
-| The argmax never moves, so accuracy is unchanged | README "Fix it"; tests table | `test/temperature.test.ts::temperature scaling reduces calibration error without moving accuracy` |
+| Raw-logit argmax is preserved, including rounded probability ties | README "Fix it"; tests table | `test/temperature.test.ts::temperature scaling reduces calibration error without moving accuracy`; `test/numerical.test.ts::raw-logit decisions survive probability rounding and exact ties` |
 | Scaling does nothing when there is nothing to fix | tests table | `test/temperature.test.ts::an already-calibrated model gets a temperature near 1` |
 | `atBound` reports a fit that converged onto the bracket edge, and is null for an interior fit | README "Fix it"; tests table | `test/temperature.test.ts::fitTemperature says when the optimum is pinned to the bracket`; `test/temperature.test.ts::a fit that lands inside the bracket reports no bound` |
 | A 1-indexed label column throws rather than returning the bracket edge | README "Fix it"; tests table | `test/temperature.test.ts::fitTemperature refuses a label outside the logit range`; `test/temperature.test.ts::fitTemperature refuses malformed logits` |
 | softmax is stable with huge logits | tests table | `test/temperature.test.ts::softmax sums to one and is stable with huge logits`; `test/temperature.test.ts::nll is finite even when a label has vanishing probability` |
 | softmax over a 200k-class vocabulary stays normalised | tests table | `test/temperature.test.ts::softmax survives a real vocabulary, not just huge magnitudes` |
 | A non-finite logit is refused, not silently turned into NaN | README "Fix it" | `test/temperature.test.ts::softmax refuses a non-finite logit instead of returning NaN` |
-| A non-positive temperature is refused | implied by `T > 0` | `test/temperature.test.ts::softmax rejects a non-positive temperature` |
-| The demo's printed before/after numbers, and the 40x fall in ECE | README "Fix it" | `test/claims.test.ts::the demo prints the numbers the README quotes` - runs `demo/demo.ts` and matches the quoted lines |
+| Non-finite and non-positive temperatures are refused at every entry point | README "Fix it" | `test/numerical.test.ts::every temperature entry point validates temperature even without data` |
+| The demo's printed held-out before/after numbers | README "Fix it" | `test/claims.test.ts::the demo prints the numbers the README quotes` - checks the separate calibration/test seeds and reported test metrics |
+| NLL is not clipped at a probability floor | README "Fix it" | `test/numerical.test.ts::NLL matches independent closed-form answers without clipping`; `validation/verify_scipy.py` |
+| Search termination and constant objectives have explicit statuses | README "Fix it" | `test/numerical.test.ts::constant objectives and search termination have explicit statuses` |
+| Empty NLL is NaN and empty fitting is refused | README "Honest limits" | `test/numerical.test.ts::every temperature entry point validates temperature even without data` |
 | Temperature scaling needs logits; the metrics need only `(confidence, correct)` | README "Honest limits" | the exported signatures, checked by `npm run typecheck` in CI |
 
 ## Claims with no enforcing test
@@ -74,5 +77,5 @@ packaging claims are enforced by `.github/workflows/test.yml` on Node 22,
 | Claim | Why not |
 | :-- | :-- |
 | "Worked example: routing-study" (header link) | Cross-repo, and routing-study pins `#v1.0.1` of this package. Turning that study's scored outputs into an in-repo fixture with pinned expected values is owned by a later pass; until then the link is a pointer, not a proved claim. |
-| "a fresh, dependency-free implementation of standard methods"; "First published 2026-08-31" | Provenance, not behaviour. The measures are pinned against constructions with closed-form answers - a band at confidence 0.9 that is 60% correct has ECE exactly 0.30, Brier is the exact MSE - rather than against an external reference implementation. There is no parity fixture in this repo. |
+| "a fresh, dependency-free implementation of standard methods"; "First published 2026-08-31" | Provenance, not behaviour. Closed-form metric fixtures are complemented by independent SciPy softmax, log-sum-exp and optimization checks in `validation/verify_scipy.py`. |
 | "Modern classifiers usually are not [calibrated] - they are overconfident" | A statement about the world, cited to Guo et al. (2017), not about this code. |

@@ -1,0 +1,33 @@
+{
+  "python": "3.11.0",
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "seed": 20261002,
+  "fixture_count": 403,
+  "maximum_probability_absolute_error": 4.440892098500626e-16,
+  "maximum_nll_absolute_error": 1.7763568394002505e-15,
+  "fits": [
+    {
+      "classes": 2,
+      "samples": 1000,
+      "temperature": 0.5452923310185382,
+      "scipy_temperature": 0.5452923127021675,
+      "objective_difference": 1.6653345369377348e-16
+    },
+    {
+      "classes": 3,
+      "samples": 1000,
+      "temperature": 2.8654099586322728,
+      "scipy_temperature": 2.8654099571060905,
+      "objective_difference": 0.0
+    },
+    {
+      "classes": 8,
+      "samples": 1000,
+      "temperature": 4.723144231757161,
+      "scipy_temperature": 4.7231441233934115,
+      "objective_difference": 2.220446049250313e-16
+    }
+  ],
+  "passed": true
+}

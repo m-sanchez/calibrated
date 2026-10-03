@@ -1,5 +1,7 @@
 # calibrated
 
+Numerical corrections in `2.0.1` are documented in [NUMERICAL_REVIEW.md](NUMERICAL_REVIEW.md), including input validation, fit statuses and compatibility notes.
+
 ![TypeScript](https://img.shields.io/badge/TypeScript-erasable_syntax-3178C6?logo=typescript&logoColor=white)
 ![Node](https://img.shields.io/badge/node-%3E%3D22.18-5FA04E?logo=nodedotjs&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-B45309)
@@ -51,30 +53,36 @@ const bins = reliabilityDiagram(predictions, 15);         // confidence vs accur
   data has fewer distinct confidences than bins you get fewer bins, and
   `effectiveBins` says how many.
 
-## Is the number real?
+## How much can ECE vary?
 
-ECE is a point estimate over binned counts, and it is biased upward: a
-perfectly calibrated model still reports a non-zero ECE, because every
-bin's accuracy is measured on a finite sample and the absolute value
-turns that noise into error. On a few hundred examples, "ECE 0.08" is not
-evidence of anything by itself.
+Sampling variation can produce nonzero measured ECE even when correctness
+is generated from the reported probabilities. Its distribution depends on
+the confidence values, sample size and binning. An isolated ECE reading
+does not establish how well a model is calibrated.
 
 ```ts
 import { eceInterval, nullEce } from '@m-sanchez/calibrated';
 
 const { ece, low, high } = eceInterval(predictions, { bins: 15 });
-const floor = nullEce({ confidences: predictions.map((p) => p.confidence), bins: 15 });
+const reference = nullEce({ confidences: predictions.map((p) => p.confidence), bins: 15 });
 ```
 
-`eceInterval` resamples your predictions with replacement and reports the
-middle 95% of the ECEs that come back - how much of the reading is
-sampling noise. `nullEce` goes the other way: it simulates a model that is
-calibrated by construction, over your confidences and your binning, and
-reports the ECE the metric produces anyway. Both are seeded, so a reported
-interval reproduces exactly.
+`eceInterval` resamples whole prediction rows with replacement and reports
+the middle 95% of their ECE distribution by default. It does not correct
+ECE bias or guarantee 95% coverage of population miscalibration. More
+draws reduce Monte Carlo variation, not the uncertainty from limited data.
 
-The floor is not small. `npm run floor`, on confidences uniform on
-[0.5, 1], 2000 draws, median / p95:
+`nullEce` draws independent correctness outcomes with probability equal to
+each supplied confidence. Array input holds those confidences fixed; a
+numeric sample count redraws uniform [0.5, 1] confidences in every simulated
+dataset. Median and p95 describe this specified null simulation. They are
+not a calibration certificate or deployment threshold, and subtracting the
+reference median is not a validated bias correction. Comparing a bootstrap
+endpoint with p95 is not a calibrated statistical test. Both summaries
+reproduce with the same inputs, settings and seed.
+
+`npm run floor` reports this reproducible example using equal-width bins,
+uniform [0.5, 1] confidences, seed 42 and 2,000 simulated datasets per cell:
 
 | n | 10 bins | 15 bins | 30 bins |
 | --: | :-- | :-- | :-- |
@@ -83,11 +91,11 @@ The floor is not small. `npm run floor`, on confidences uniform on
 | 400 | 0.0345 / 0.0572 | 0.0436 / 0.0655 | 0.0605 / 0.0818 |
 | 1000 | 0.0217 / 0.0361 | 0.0277 / 0.0415 | 0.0379 / 0.0522 |
 
-A perfectly calibrated model on a 100-item eval set with 15 bins reports a
-median ECE of 0.087, and fails a bare `ece <= 0.1` ship bar in 31% of
-draws - with nothing wrong with it. At n=200 that falls to 3%, and at
-n=400 it did not happen once in 2000 draws. Compare a reading against the
-floor before calling it miscalibration, and prefer more data to more bins.
+In this simulation, n=100 and 15 bins produce median ECE 0.0874, with ECE
+above 0.1 in approximately 31% of draws. The corresponding fraction is
+approximately 3% at n=200 and zero in these 2,000 draws at n=400. Zero
+observed exceedances does not establish zero population probability.
+These numbers describe the stated generator, not a general acceptance rule.
 
 ## Fix it: temperature scaling
 
@@ -100,25 +108,27 @@ here by a dependency-free golden-section search.
 ```ts
 import { fitTemperature, toPredictions } from '@m-sanchez/calibrated';
 
-const fit = fitTemperature(logitSamples);   // { temperature, nllBefore, nllAfter, improved, atBound }
-const recalibrated = toPredictions(logitSamples, fit.temperature);
+const fit = fitTemperature(calibrationSamples);
+const recalibrated = toPredictions(testSamples, fit.temperature);
 ```
 
-`atBound` is `'lo'` or `'hi'` when the search converged onto the edge of
-its own bracket: what came back is a boundary, not a fit, and the real
-optimum lies outside `[lo, hi]` - widen it with
-`fitTemperature(samples, { hi: 200 })` and refit. Labels and logits are
-validated, so a 1-indexed label column throws rather than quietly
-returning that bracket edge with `nllBefore: NaN`.
+`status` distinguishes `converged`, `boundary`, `constant`, `max-iterations`
+and `stalled` results. `atBound` is `'lo'` or `'hi'` for a converged boundary
+solution; it does not establish where an unconstrained optimum lies.
+Only the calibration rows fit the temperature; evaluate it on separate test rows.
+Labels, dimensions, finite positive temperatures, search bounds and termination
+options are validated. NLL uses log-sum-exp without probability clipping.
 
-`npm run demo` on a seeded, wildly overconfident 4-class model:
+`npm run demo` uses a synthetic 4-class classifier with 3,000 calibration
+rows (seed 7) and 3,000 separate test rows (seed 19):
 
 ```
-before scaling         ECE 0.284   Brier 0.284   accuracy 71.6%
-after (T=4.45)         ECE 0.006   Brier 0.204   accuracy 71.6%
+before scaling         ECE 0.279   Brier 0.279   accuracy 72.0%
+after (T=4.45)         ECE 0.010   Brier 0.202   accuracy 72.0%
 ```
 
-The calibration error fell by 40x and not one prediction changed.
+Held-out NLL is 2.520 before and 0.901 after scaling; decisions are unchanged.
+These results describe this seeded example, not a general improvement guarantee.
 
 ## Honest limits
 
@@ -128,14 +138,16 @@ The calibration error fell by 40x and not one prediction changed.
 - ECE and the Brier decomposition depend on the bin count; the raw Brier
   score does not. Report the binning you used, and prefer equal-mass when
   confidence is top-heavy.
-- ECE is positively biased: the bias grows with the bin count and shrinks
-  with the sample size, and it does not vanish for a perfect model. Read
-  it next to `eceInterval` and `nullEce`, not alone.
+- Finite-sample ECE can be positive under calibration. Bootstrap intervals
+  and null simulations describe specified resampling assumptions; neither
+  establishes calibration or corrects estimator bias.
 - No predictions is not perfect calibration. `calibrationError([])` and
   `brier([])` return NaN, not 0, so an empty slice of a dashboard cannot
   pass an `ece <= x` bar.
 - Temperature scaling needs logits (per-class scores), not just the final
   confidence; the metrics need only `(confidence, correct)`.
+- `nll([], 1)` returns NaN; fitting without samples throws. A loss beyond
+  JavaScript's finite numeric range throws rather than being clipped.
 
 ## Run
 
@@ -155,7 +167,7 @@ Node 22.18+, zero runtime dependencies.
 
 | Test | Claim |
 | :-- | :-- |
-| a perfectly calibrated set has ~zero ECE | the metric bottoms out where it should |
+| a constructed set has zero empirical gap in every occupied bin | its measured ECE is approximately zero |
 | an overconfident set surfaces its exact gap | ECE reads the miscalibration, not noise |
 | MCE reports the worst bin, not the average | the least-trustworthy confidence is named |
 | temperature scaling cuts ECE without moving accuracy | recalibration is free of the decision |
@@ -165,8 +177,8 @@ Node 22.18+, zero runtime dependencies.
 | softmax over 200k classes stays normalised | token-level calibration of an LLM actually runs |
 | equal-mass ECE is identical across 50 shuffles of the same rows | the metric is a function of the data, not of row order |
 | all-tied confidences read their exact gap, not an inflated one | a repeated confidence is never split across two bins |
-| a bootstrap interval covers a known gap and reproduces from its seed | an ECE reading arrives with its uncertainty |
-| every cell of the noise-floor table is what the simulation reports | the table above is measured, not asserted |
+| a seeded bootstrap fixture includes its constructed gap | one fixture is reproduced, not a general coverage guarantee |
+| every cell of the null-simulation table matches the calculation | the stated generator and settings reproduce the table |
 | a fit pinned to the bracket edge is reported as pinned | a boundary is never returned as a success |
 | a 1-indexed label throws | the commonest data-prep mistake is refused, not absorbed |
 | an empty set reports NaN | no data cannot pass a calibration bar |

@@ -1,127 +1,159 @@
-/** Temperature scaling: the single-parameter recalibration of Guo et al.
- * (2017), "On Calibration of Modern Neural Networks".
- *
- * A modern classifier is usually overconfident. Temperature scaling fixes
- * that without touching the model's decisions: divide every logit by one
- * learned scalar T before the softmax. T > 1 softens the distribution
- * (less confident), T < 1 sharpens it; the argmax never moves, so accuracy
- * is unchanged and only the confidences are recalibrated. T is fit by
- * minimising negative log-likelihood on a held-out set - here by a
- * dependency-free golden-section search, since it is a smooth 1-D problem. */
-
 export interface LogitSample {
-  /** raw pre-softmax scores, one per class */
   logits: number[];
-  /** index of the true class */
   label: number;
 }
 
-/** Numerically stable softmax of logits divided by temperature. The maximum
- * is taken in a loop rather than with `Math.max(...logits)`: the spread form
- * puts every logit on the call stack and throws above roughly 100k of them,
- * and a modern LLM vocabulary is 128k-256k classes. */
-export function softmax(logits: number[], temperature = 1): number[] {
-  if (!(temperature > 0)) throw new RangeError(`temperature must be > 0, got ${temperature}`);
-  const k = logits.length;
-  let max = -Infinity;
-  for (let i = 0; i < k; i++) {
-    const z = logits[i];
-    if (!Number.isFinite(z)) throw new RangeError(`logit at index ${i} must be finite, got ${z}`);
-    const scaled = z / temperature;
-    if (scaled > max) max = scaled;
+function validateTemperature(temperature: number): void {
+  if (!Number.isFinite(temperature) || temperature <= 0) {
+    throw new RangeError(`temperature must be finite and > 0, got ${temperature}`);
   }
-  const out = new Array<number>(k);
+}
+
+function validateLogits(logits: number[], label: string): void {
+  if (!Array.isArray(logits) || logits.length === 0) {
+    throw new RangeError(`${label} must be a non-empty array`);
+  }
+  for (let i = 0; i < logits.length; i++) {
+    if (!Number.isFinite(logits[i])) {
+      throw new RangeError(`${label} at index ${i} must be finite, got ${logits[i]}`);
+    }
+  }
+}
+
+function argmax(logits: number[]): number {
+  let index = 0;
+  for (let i = 1; i < logits.length; i++) if (logits[i] > logits[index]) index = i;
+  return index;
+}
+
+function scaledGap(logit: number, maximum: number, temperature: number): number {
+  const gap = logit - maximum;
+  // Scaling first recovers representable differences when raw subtraction overflows.
+  return Number.isFinite(gap) ? gap / temperature : logit / temperature - maximum / temperature;
+}
+
+function softmaxUnchecked(logits: number[], temperature: number): number[] {
+  const maximum = logits[argmax(logits)];
+  const out = new Array<number>(logits.length);
   let sum = 0;
-  for (let i = 0; i < k; i++) {
-    const e = Math.exp(logits[i] / temperature - max);
-    out[i] = e;
-    sum += e;
+  for (let i = 0; i < logits.length; i++) {
+    const value = Math.exp(scaledGap(logits[i], maximum, temperature));
+    out[i] = value;
+    sum += value;
   }
-  for (let i = 0; i < k; i++) out[i] /= sum;
+  for (let i = 0; i < out.length; i++) out[i] /= sum;
   return out;
 }
 
-/** Reject the input that silently produces a wrong answer: a label outside
- * the class range makes `softmax(...)[label]` undefined, so the NLL is NaN,
- * so every comparison in the search is false and the search walks to its
- * upper bracket and reports that as a fit. The commonest cause by far is a
- * 1-indexed label column. */
+export function softmax(logits: number[], temperature = 1): number[] {
+  validateTemperature(temperature);
+  validateLogits(logits, 'logit');
+  return softmaxUnchecked(logits, temperature);
+}
+
 function validate(samples: LogitSample[]): void {
+  const classes = samples[0]?.logits?.length;
   for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    if (s.logits.length < 2) {
-      throw new RangeError(`sample ${i}: need at least 2 logits (one per class), got ${s.logits.length}`);
+    const sample = samples[i];
+    validateLogits(sample.logits, `sample ${i}: logit`);
+    if (sample.logits.length < 2) {
+      throw new RangeError(`sample ${i}: need at least 2 logits, got ${sample.logits.length}`);
     }
-    for (let c = 0; c < s.logits.length; c++) {
-      if (!Number.isFinite(s.logits[c])) {
-        throw new RangeError(`sample ${i}: logit ${c} must be finite, got ${s.logits[c]}`);
-      }
+    if (sample.logits.length !== classes) {
+      throw new RangeError(`sample ${i}: expected ${classes} logits, got ${sample.logits.length}`);
     }
-    if (!Number.isInteger(s.label) || s.label < 0 || s.label >= s.logits.length) {
-      const hint =
-        s.label === s.logits.length ? ' - a label equal to the class count means 1-indexed labels' : '';
-      throw new RangeError(
-        `sample ${i}: label must be an integer class index in [0, ${s.logits.length}), got ${s.label}${hint}`
-      );
+    if (!Number.isInteger(sample.label) || sample.label < 0 || sample.label >= sample.logits.length) {
+      const hint = sample.label === sample.logits.length ? ' - check for 1-indexed labels' : '';
+      throw new RangeError(`sample ${i}: label must be an integer class index in [0, ${sample.logits.length}), got ${sample.label}${hint}`);
     }
   }
 }
 
-/** Mean negative log-likelihood of the labels under temperature T. */
 export function nll(samples: LogitSample[], temperature: number): number {
+  validateTemperature(temperature);
   validate(samples);
   return nllUnchecked(samples, temperature);
 }
 
-/** The search calls this tens of times; the samples are validated once, at
- * the public entry point, rather than on every evaluation. */
 function nllUnchecked(samples: LogitSample[], temperature: number): number {
-  if (samples.length === 0) return 0;
-  let total = 0;
-  for (const s of samples) {
-    const p = softmax(s.logits, temperature)[s.label];
-    total += -Math.log(Math.max(p, 1e-12));
+  if (samples.length === 0) return NaN;
+  let mean = 0;
+  let correction = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const { logits, label } = samples[i];
+    const maximumIndex = argmax(logits);
+    const maximum = logits[maximumIndex];
+    let tail = 0;
+    for (let c = 0; c < logits.length; c++) {
+      if (c !== maximumIndex) tail += Math.exp(scaledGap(logits[c], maximum, temperature));
+    }
+    const loss = Math.log1p(tail) - scaledGap(logits[label], maximum, temperature);
+    if (!Number.isFinite(loss)) {
+      throw new RangeError(`sample ${i}: NLL exceeds finite numeric range at temperature ${temperature}`);
+    }
+    const contribution = loss / samples.length - correction;
+    const next = mean + contribution;
+    correction = next - mean - contribution;
+    mean = next;
   }
-  return total / samples.length;
+  if (!Number.isFinite(mean)) throw new RangeError('mean NLL exceeds finite numeric range');
+  return mean;
 }
 
 export interface TemperatureFit {
   temperature: number;
   nllBefore: number;
   nllAfter: number;
-  /** true when scaling actually helped (nll did not increase) */
   improved: boolean;
-  /** `'lo'` or `'hi'` when the search converged onto its own bracket edge
-   * instead of an interior minimum. The returned temperature is then a
-   * boundary, not a fit: the real optimum lies outside [lo, hi] and the
-   * bracket needs widening. `null` when the minimum is interior. */
   atBound: 'lo' | 'hi' | null;
+  status: 'converged' | 'boundary' | 'constant' | 'max-iterations' | 'stalled';
+  iterations: number;
 }
 
-/** Fit the calibrating temperature by golden-section search over
- * [lo, hi]. NLL as a function of T is smooth and unimodal for a fixed
- * validation set, so a bracketing search converges without gradients. */
 export function fitTemperature(
   samples: LogitSample[],
-  opts: { lo?: number; hi?: number; tolerance?: number } = {}
+  opts: { lo?: number; hi?: number; tolerance?: number; maxIterations?: number } = {}
 ): TemperatureFit {
   const lo = opts.lo ?? 0.05;
   const hi = opts.hi ?? 20;
-  const tol = opts.tolerance ?? 1e-4;
+  const tolerance = opts.tolerance ?? 1e-4;
+  const maxIterations = opts.maxIterations ?? 256;
+  validateTemperature(lo);
+  validateTemperature(hi);
+  if (lo >= hi) throw new RangeError('temperature bounds must satisfy lo < hi');
+  if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance >= hi - lo) {
+    throw new RangeError('tolerance must be finite, > 0 and smaller than hi - lo');
+  }
+  if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > 10_000) {
+    throw new RangeError('maxIterations must be an integer in [1, 10000]');
+  }
   validate(samples);
+  if (samples.length === 0) throw new RangeError('cannot fit temperature without samples');
   const nllBefore = nllUnchecked(samples, 1);
-  if (samples.length === 0) {
-    return { temperature: 1, nllBefore, nllAfter: nllBefore, improved: false, atBound: null };
+  if (samples.every(({ logits }) => logits.every((value) => value === logits[0]))) {
+    return {
+      temperature: Math.min(hi, Math.max(lo, 1)),
+      nllBefore,
+      nllAfter: nllBefore,
+      improved: false,
+      atBound: null,
+      status: 'constant',
+      iterations: 0
+    };
   }
 
-  const phi = (Math.sqrt(5) - 1) / 2; // 0.618...
+  const phi = (Math.sqrt(5) - 1) / 2;
   let a = lo;
   let b = hi;
   let c = b - phi * (b - a);
   let d = a + phi * (b - a);
   let fc = nllUnchecked(samples, c);
   let fd = nllUnchecked(samples, d);
-  while (b - a > tol) {
+  let iterations = 0;
+  let stalled = false;
+  while (b - a > tolerance && iterations < maxIterations) {
+    const previousA = a;
+    const previousB = b;
     if (fc < fd) {
       b = d;
       d = c;
@@ -135,23 +167,29 @@ export function fitTemperature(
       d = a + phi * (b - a);
       fd = nllUnchecked(samples, d);
     }
+    iterations++;
+    if (a === previousA && b === previousB) {
+      stalled = true;
+      break;
+    }
   }
-  const temperature = (a + b) / 2;
+  const temperature = a + (b - a) / 2;
   const nllAfter = nllUnchecked(samples, temperature);
-  const edge = Math.max(tol, 1e-9);
-  const atBound = temperature <= lo + edge ? 'lo' : temperature >= hi - edge ? 'hi' : null;
-  return { temperature, nllBefore, nllAfter, improved: nllAfter <= nllBefore + 1e-9, atBound };
+  const converged = b - a <= tolerance;
+  const atBound = converged
+    ? temperature - lo <= tolerance ? 'lo' : hi - temperature <= tolerance ? 'hi' : null
+    : null;
+  const status = converged ? atBound === null ? 'converged' : 'boundary' : stalled ? 'stalled' : 'max-iterations';
+  return { temperature, nllBefore, nllAfter, improved: nllAfter <= nllBefore + 1e-9, atBound, status, iterations };
 }
 
-/** Turn a fitted temperature into calibrated (confidence, correct) pairs,
- * ready for `calibrationError` / `brier`: the recalibrated confidence is
- * the top softmax probability, and correctness is argmax == label. */
 export function toPredictions(samples: LogitSample[], temperature = 1) {
+  validateTemperature(temperature);
   validate(samples);
-  return samples.map((s) => {
-    const probs = softmax(s.logits, temperature);
-    let argmax = 0;
-    for (let i = 1; i < probs.length; i++) if (probs[i] > probs[argmax]) argmax = i;
-    return { confidence: probs[argmax], correct: argmax === s.label };
+  return samples.map(({ logits, label }) => {
+    // Rounded probabilities can tie even when raw logits have a unique maximum.
+    const predicted = argmax(logits);
+    const probabilities = softmaxUnchecked(logits, temperature);
+    return { confidence: probabilities[predicted], correct: predicted === label };
   });
 }
