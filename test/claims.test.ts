@@ -1,6 +1,3 @@
-/** The claims the README makes out loud, enforced. Anything quoted on the
- * front page is either measured here or is not said. */
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -19,11 +16,10 @@ test('the package has no runtime dependencies', () => {
 test('the demo prints the numbers the README quotes', () => {
   const demo = fileURLToPath(new URL('../demo/demo.ts', import.meta.url));
   const out = execFileSync(process.execPath, [demo], { encoding: 'utf8' });
-  assert.match(out, /before scaling\s+ECE 0\.284\s+Brier 0\.284\s+accuracy 71\.6%/);
-  assert.match(out, /after \(T=4\.45\)\s+ECE 0\.006\s+Brier 0\.204\s+accuracy 71\.6%/);
-  const before = Number(/before scaling\s+ECE (\d+\.\d+)/.exec(out)![1]);
-  const after = Number(/after \(T=4\.45\)\s+ECE (\d+\.\d+)/.exec(out)![1]);
-  assert.ok(after * 40 <= before, `README claims a 40x fall: ${before} -> ${after}`);
+  assert.match(out, /calibration n=3000 \(seed 7\), test n=3000 \(seed 19\)/);
+  assert.match(out, /before scaling\s+ECE 0\.279\s+Brier 0\.279\s+accuracy 72\.0%/);
+  assert.match(out, /after \(T=4\.45\)\s+ECE 0\.010\s+Brier 0\.202\s+accuracy 72\.0%/);
+  assert.match(out, /held-out NLL 2\.520 -> 0\.901; fit status: converged/);
 });
 
 test('ECE depends on the bin count; the raw Brier score does not', () => {

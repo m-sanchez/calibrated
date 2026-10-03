@@ -1,26 +1,9 @@
-/** Uncertainty for ECE.
- *
- * ECE is a point estimate over binned counts, and it is positively biased:
- * a perfectly calibrated model still reports a non-zero ECE, because each
- * bin's accuracy is measured on a finite sample and the absolute value
- * turns that sampling noise into error. The bias grows with the bin count
- * and shrinks with the sample size. So a bare "ECE 0.08" cannot be read as
- * miscalibration, and a ship gate of the form `ece <= 0.1` on a few hundred
- * examples can fail a model that is perfectly honest.
- *
- * Two functions, answering the two questions that turns a reading into a
- * decision. `eceInterval` resamples your predictions to say how much of the
- * reading is sampling noise. `nullEce` simulates a perfectly calibrated
- * model over the same confidences and binning to say what ECE looks like
- * when there is nothing wrong at all - the floor to compare against. */
+/** ECE resampling and simulation summaries do not establish calibration or correct estimator bias. */
 
 import { calibrationError } from './metrics.ts';
 import type { BinStrategy, Prediction } from './binning.ts';
 
-/** The same linear congruential generator as @m-sanchez/ab-significance's
- * paired bootstrap, duplicated here on purpose: this package ships zero
- * runtime dependencies, and intervals reported across the family should be
- * drawn from the same stream so they are directly comparable. */
+// Duplicating the generator preserves the shared seeded stream without a runtime dependency.
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -29,16 +12,14 @@ function lcg(seed: number): () => number {
   };
 }
 
-/** The order statistic at `q` of an ascending array. */
 function quantile(sorted: Float64Array, q: number): number {
   const i = Math.min(sorted.length - 1, Math.max(0, Math.floor(q * sorted.length)));
   return sorted[i];
 }
 
 export interface EceInterval {
-  /** the point estimate on the data as it stands */
   ece: number;
-  /** the `level` percentile interval of the bootstrap distribution */
+  /** Percentile endpoints describe the bootstrap distribution without correcting ECE bias. */
   low: number;
   high: number;
   level: number;
@@ -51,22 +32,15 @@ export interface EceInterval {
 export interface EceIntervalOptions {
   bins?: number;
   strategy?: BinStrategy;
-  /** bootstrap resamples; more is tighter but slower. Default 2000. */
+  /** Defaults to 2000 draws; more draws reduce Monte Carlo variation, not sampling uncertainty. */
   iterations?: number;
-  /** interval coverage, default 0.95 */
+  /** Central fraction of bootstrap draws to report, default 0.95. */
   level?: number;
-  /** seed for the resampling, so a reported interval reproduces exactly */
+  /** Fixed data, settings and seed reproduce the resampling summary. */
   seed?: number;
 }
 
-/** A seeded non-parametric bootstrap interval for ECE: resample the
- * predictions with replacement `iterations` times, recompute ECE on each
- * resample, and report the middle `level` of that distribution.
- *
- * The interval covers sampling noise, not the bias: ECE is biased upward,
- * so the interval sits around the biased point estimate rather than around
- * the true calibration gap. Compare its low end with `nullEce` before
- * calling a reading real. */
+/** Resamples whole rows with replacement and reports central ECE percentiles without guaranteed population coverage. */
 export function eceInterval(
   predictions: Prediction[],
   opts: EceIntervalOptions = {}
@@ -102,10 +76,10 @@ export function eceInterval(
 }
 
 export interface NullEce {
-  /** the ECE a perfectly calibrated model of this size and binning reports */
+  /** Summaries of simulated ECE under independent Bernoulli(confidence) correctness. */
   median: number;
   mean: number;
-  /** an observed ECE below this is not distinguishable from binning noise */
+  /** The simulated 95th percentile is a reference quantile, not a calibration certificate or deployment threshold. */
   p95: number;
   n: number;
   bins: number;
@@ -114,23 +88,16 @@ export interface NullEce {
 }
 
 export interface NullEceOptions {
-  /** the confidences you actually have - pass `predictions.map(p =>
-   * p.confidence)` - or just a sample size, in which case confidences are
-   * drawn uniform on [0.5, 1] as a rough stand-in for a top-heavy set. Your
-   * own confidences give the floor that applies to your reading. */
+  /** An array fixes confidences; a sample count redraws them uniformly on [0.5, 1] in every simulation. */
   confidences: number[] | number;
   bins?: number;
   strategy?: BinStrategy;
-  /** simulated datasets; default 2000 */
+  /** Defaults to 2000 simulated datasets. */
   iterations?: number;
   seed?: number;
 }
 
-/** The noise floor: the ECE distribution of a model that is perfectly
- * calibrated at these confidences, under this binning. Each iteration draws
- * `correct ~ Bernoulli(confidence)` - honest by construction - and measures
- * the ECE anyway. Whatever comes back is what the metric reports when there
- * is nothing to report. Subtract it, or set your bar above its p95. */
+/** Simulates independent correctness under a calibration null; subtracting its summaries does not produce an unbiased ECE. */
 export function nullEce(opts: NullEceOptions): NullEce {
   const bins = opts.bins ?? 10;
   const strategy = opts.strategy ?? 'equal-width';
@@ -142,9 +109,6 @@ export function nullEce(opts: NullEceOptions): NullEce {
   if (typeof opts.confidences === 'number' && !(Number.isInteger(opts.confidences) && opts.confidences >= 0)) {
     throw new RangeError(`confidences must be an array or a non-negative integer n, got ${opts.confidences}`);
   }
-  // given actual confidences the floor is conditional on them; given only a
-  // size, the confidence spread is redrawn each iteration too, so the answer
-  // is not hostage to one lucky draw
   const fixed = typeof opts.confidences === 'number' ? null : opts.confidences;
   const n = fixed === null ? (opts.confidences as number) : fixed.length;
   if (n === 0) {
