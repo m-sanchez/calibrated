@@ -32,17 +32,22 @@
     "type": "git",
     "url": "git+https://github.com/m-sanchez/calibrated.git"
   },
+  "homepage": "https://github.com/m-sanchez/calibrated#readme",
+  "bugs": {
+    "url": "https://github.com/m-sanchez/calibrated/issues"
+  },
   "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
   "license": "MIT",
   "keywords": [
     "calibration",
     "ece",
-    "temperature-scaling",
     "brier-score",
     "reliability-diagram",
+    "temperature-scaling",
+    "uncertainty",
+    "confidence",
     "machine-learning",
-    "model-evaluation",
-    "uncertainty"
+    "evaluation"
   ],
   "engines": {
     "node": ">=22.18"
